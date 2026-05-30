@@ -1,0 +1,468 @@
+{
+  "datasets": [
+    {
+      "name": "d0000001",
+      "displayName": "Sensor Timeline",
+      "queryLines": [
+        "SELECT\n",
+        "    store,\n",
+        "    event_timestamp,\n",
+        "    inventory_gallons,\n",
+        "    weather_temp_f,\n",
+        "    weather_condition,\n",
+        "    source AS source_system,\n",
+        "    CASE WHEN source = 'iot_sensor_faulty' THEN 'Corrupted Reading' ELSE 'Normal Reading' END AS reading_type\n",
+        "FROM workspace.supply_agent_demo.world_state\n"
+      ]
+    },
+    {
+      "name": "d0000002",
+      "displayName": "Agent Decision Log",
+      "queryLines": [
+        "SELECT\n",
+        "    store,\n",
+        "    action_timestamp,\n",
+        "    decision,\n",
+        "    context_inventory,\n",
+        "    context_temp_f,\n",
+        "    reasoning,\n",
+        "    system_timestamp,\n",
+        "    CASE WHEN context_inventory < 0 OR context_temp_f > 90 THEN 'Anomalous Context' ELSE 'Normal Context' END AS context_type\n",
+        "FROM workspace.supply_agent_demo.agent_memory\n"
+      ]
+    },
+    {
+      "name": "d0000003",
+      "displayName": "Bi-Temporal Audit",
+      "queryLines": [
+        "SELECT\n",
+        "    m.action_timestamp                  AS agent_decision_time,\n",
+        "    m.context_inventory                 AS inventory_agent_saw,\n",
+        "    m.context_temp_f                    AS temp_agent_saw,\n",
+        "    w.inventory_gallons                 AS inventory_live_now,\n",
+        "    w.weather_temp_f                    AS temp_live_now,\n",
+        "    m.decision                          AS agent_decision,\n",
+        "    m.system_timestamp                  AS decision_committed_to_delta,\n",
+        "    w.event_timestamp                   AS latest_sensor_event_time,\n",
+        "    ABS(m.context_inventory - w.inventory_gallons) AS inventory_delta\n",
+        "FROM workspace.supply_agent_demo.agent_memory AS m\n",
+        "JOIN workspace.supply_agent_demo.world_state  AS w\n",
+        "  ON m.store = w.store\n",
+        "WHERE m.store = 'Downtown'\n",
+        "ORDER BY m.action_timestamp ASC, w.event_timestamp DESC\n"
+      ]
+    },
+    {
+      "name": "d0000004",
+      "displayName": "Delta Commit History",
+      "queryLines": [
+        "SELECT\n",
+        "    version,\n",
+        "    timestamp,\n",
+        "    operation,\n",
+        "    COALESCE(userMetadata, 'system') AS commit_tag\n",
+        "FROM (\n",
+        "    DESCRIBE HISTORY workspace.supply_agent_demo.world_state\n",
+        ")\n",
+        "ORDER BY version ASC\n"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "p0000001",
+      "displayName": "Incident Audit",
+      "layout": [
+        {
+          "widget": {
+            "name": "w0000000",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## SupplyAgent Incident May 19, 2026\n",
+                "\n",
+                "**The question:** Why did SupplyAgent order 8,000 gallons of oat milk on a rainy 45°F morning in Seattle?\n",
+                "\n",
+                "**The answer:** It didn't hallucinate. It was data pipeline poisoning. A faulty IoT sensor reported -999 gallons of inventory at 08:12 AM. A weather API glitch simultaneously pushed a 102°F heatwave warning. Both self-corrected by 08:16, erasing all evidence from the live table.\n",
+                "\n",
+                "Without Delta Lake Time Travel, this incident would be unexplainable."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "w0000001",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d0000001",
+                  "fields": [
+                    {
+                      "name": "event_timestamp",
+                      "expression": "`event_timestamp`"
+                    },
+                    {
+                      "name": "inventory_gallons",
+                      "expression": "`inventory_gallons`"
+                    },
+                    {
+                      "name": "reading_type",
+                      "expression": "`reading_type`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "event_timestamp",
+                  "displayName": "Time",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "inventory_gallons",
+                  "displayName": "Inventory (gallons)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "reading_type",
+                  "displayName": "Reading Type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "w0000002",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d0000001",
+                  "fields": [
+                    {
+                      "name": "reading_type",
+                      "expression": "`reading_type`"
+                    },
+                    {
+                      "name": "event_timestamp",
+                      "expression": "`event_timestamp`"
+                    },
+                    {
+                      "name": "weather_temp_f",
+                      "expression": "`weather_temp_f`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`event_timestamp` >= TIMESTAMP '2026-05-19 07:30:00' AND `event_timestamp` <= TIMESTAMP '2026-05-19 08:20:00'"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Temperature Timeline",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "event_timestamp",
+                  "displayName": "Time",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "weather_temp_f",
+                  "displayName": "Temperature (F)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "reading_type",
+                  "displayName": "Reading Type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 3,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "w0000003",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d0000002",
+                  "fields": [
+                    {
+                      "name": "action_timestamp",
+                      "expression": "`action_timestamp`"
+                    },
+                    {
+                      "name": "context_inventory",
+                      "expression": "`context_inventory`"
+                    },
+                    {
+                      "name": "context_temp_f",
+                      "expression": "`context_temp_f`"
+                    },
+                    {
+                      "name": "decision",
+                      "expression": "`decision`"
+                    },
+                    {
+                      "name": "context_type",
+                      "expression": "`context_type`"
+                    },
+                    {
+                      "name": "reasoning",
+                      "expression": "`reasoning`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "action_timestamp",
+                    "displayName": "Action Timestamp"
+                  },
+                  {
+                    "fieldName": "context_inventory",
+                    "displayName": "Context Inventory"
+                  },
+                  {
+                    "fieldName": "context_temp_f",
+                    "displayName": "Context Temp (F)"
+                  },
+                  {
+                    "fieldName": "decision",
+                    "displayName": "Decision"
+                  },
+                  {
+                    "fieldName": "context_type",
+                    "displayName": "Context Type"
+                  },
+                  {
+                    "fieldName": "reasoning",
+                    "displayName": "Reasoning"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "w0000004",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d0000003",
+                  "fields": [
+                    {
+                      "name": "agent_decision_time",
+                      "expression": "`agent_decision_time`"
+                    },
+                    {
+                      "name": "inventory_agent_saw",
+                      "expression": "`inventory_agent_saw`"
+                    },
+                    {
+                      "name": "temp_agent_saw",
+                      "expression": "`temp_agent_saw`"
+                    },
+                    {
+                      "name": "inventory_live_now",
+                      "expression": "`inventory_live_now`"
+                    },
+                    {
+                      "name": "temp_live_now",
+                      "expression": "`temp_live_now`"
+                    },
+                    {
+                      "name": "agent_decision",
+                      "expression": "`agent_decision`"
+                    },
+                    {
+                      "name": "inventory_delta",
+                      "expression": "`inventory_delta`"
+                    },
+                    {
+                      "name": "decision_committed_to_delta",
+                      "expression": "`decision_committed_to_delta`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "agent_decision_time",
+                    "displayName": "Agent Decision Time"
+                  },
+                  {
+                    "fieldName": "inventory_agent_saw",
+                    "displayName": "Inventory Agent Saw"
+                  },
+                  {
+                    "fieldName": "temp_agent_saw",
+                    "displayName": "Temp Agent Saw"
+                  },
+                  {
+                    "fieldName": "inventory_live_now",
+                    "displayName": "Inventory Live Now"
+                  },
+                  {
+                    "fieldName": "temp_live_now",
+                    "displayName": "Temp Live Now"
+                  },
+                  {
+                    "fieldName": "agent_decision",
+                    "displayName": "Agent Decision"
+                  },
+                  {
+                    "fieldName": "inventory_delta",
+                    "displayName": "Inventory Delta"
+                  },
+                  {
+                    "fieldName": "decision_committed_to_delta",
+                    "displayName": "Delta Commit Time"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 12,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "w0000005",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d0000004",
+                  "fields": [
+                    {
+                      "name": "version",
+                      "expression": "`version`"
+                    },
+                    {
+                      "name": "timestamp",
+                      "expression": "`timestamp`"
+                    },
+                    {
+                      "name": "operation",
+                      "expression": "`operation`"
+                    },
+                    {
+                      "name": "commit_tag",
+                      "expression": "`commit_tag`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "version",
+                    "displayName": "Version"
+                  },
+                  {
+                    "fieldName": "timestamp",
+                    "displayName": "Timestamp"
+                  },
+                  {
+                    "fieldName": "operation",
+                    "displayName": "Operation"
+                  },
+                  {
+                    "fieldName": "commit_tag",
+                    "displayName": "Commit Tag"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 12,
+            "height": 4
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ]
+}
